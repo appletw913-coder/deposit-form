@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>保證金繳交回報系統</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+  <style>
+    body { background:#f5f5f5; padding:20px; }
+    .container { max-width:600px; background:#fff; padding:30px; border-radius:15px; box-shadow:0 4px 15px rgba(0,0,0,.1); }
+    h4 { color:#2c3e50; font-weight:bold; margin-bottom:30px; text-align:center; }
+    .btn-primary { width:100%; background-color:#3498db !important; margin-top:20px; height:50px; font-size:1.1rem; border-radius:8px; }
+    #resultSection { background-color:#fff2cc; padding:20px; border-radius:12px; border:1px solid #ffe599; margin-top:20px; }
+    .total-box { text-align:center; border-top:2px solid #ffe599; padding-top:20px; margin-top:20px; }
+    .total-amount { font-size:3rem; font-weight:900; color:#d93025; line-height:1; margin:10px 0; }
+    .loading { display:none; text-align:center; margin:20px 0; }
+    .course-checkbox-label { display:block; margin-bottom:10px; font-size:1.05rem; color:#333; }
+    .notice { color:#d93025; font-weight:bold; font-size:.95rem; margin-top:12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h4>保證金繳交回報系統</h4>
+
+    <div id="searchBox">
+      <div class="input-field">
+        <input type="text" id="userId" placeholder="請輸入身分證字號或手機號碼">
+        <label for="userId">身分證 / 手機號碼</label>
+      </div>
+      <button class="btn btn-primary" onclick="checkStatus()">查詢錄取狀態</button>
+    </div>
+
+    <div class="loading" id="loading">
+      <div class="preloader-wrapper small active"><div class="spinner-layer spinner-blue-only">
+        <div class="circle-clipper left"><div class="circle"></div></div>
+        <div class="gap-patch"><div class="circle"></div></div>
+        <div class="circle-clipper right"><div class="circle"></div></div>
+      </div></div>
+      <p>查詢中，請稍候...</p>
+    </div>
+
+    <div id="resultSection" style="display:none;">
+      <p style="font-size:1.2rem;">您好，<span id="userNameDisplay" style="font-weight:bold; color:#d93025;"></span></p>
+      <p style="font-weight:bold; color:#7f8c8d; margin-bottom:5px;">請勾選您本次要回報繳費的課程：</p>
+      <div id="courseCheckboxContainer" style="margin:15px 0; padding:10px; background:rgba(255,255,255,.6); border-radius:8px;"></div>
+      <div class="total-box">
+        <span style="font-size:1.1rem; font-weight:bold; color:#7f8c8d;">應繳總金額 (合併計算)</span>
+        <div class="total-amount">$ <span id="totalDisplay">0</span></div>
+        <p class="notice">⚠ 您勾選的課程會合併為「一筆」繳費，<br>請一次匯款剛好的總金額 $<span id="noticeTotal">0</span> 元，<b>請勿分筆或分開匯款</b>，以利對帳。</p>
+      </div>
+    </div>
+
+    <div id="formSection" style="display:none; margin-top:30px;">
+      <form id="reportForm">
+        <div id="dynamicFields"></div>
+        <button type="submit" class="btn btn-primary green">確認送出回報</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+  <script>
+    // ★ 你的「報名前台專案」網頁應用程式網址（已填入）
+    const GAS_API = 'https://script.google.com/macros/s/AKfycbw8GXg-NW-m6bfrg3FW5NjJZZqIUe4d3NF1O7U_HRzye4pjHHhcRKUXKmw2EMNWMQ2JVA/exec';
+
+    let globalCourseDetails = [];
+    let formFields = [];
+
+    // 統一的後端呼叫（用 fetch；不要自訂 Content-Type，避免 CORS 預檢）
+    async function api(action, payload) {
+      const res = await fetch(GAS_API, {
+        method: 'POST',
+        body: JSON.stringify(Object.assign({ action: action }, payload || {}))
+      });
+      const text = await res.text();
+      try { return JSON.parse(text); }
+      catch (e) { throw new Error('後端回應異常（可能是部署權限非「任何人」、未加 doPost、或網址錯誤）'); }
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+      M.AutoInit();
+      api('getFormFields')
+        .then(function (r) { formFields = (r && r.fields) || []; renderFields(formFields); })
+        .catch(function (err) { console.error(err); });
+    });
+
+    function checkStatus() {
+      const id = document.getElementById('userId').value.trim();
+      if (!id) return alert('請輸入號碼');
+      document.getElementById('loading').style.display = 'block';
+      document.getElementById('resultSection').style.display = 'none';
+      document.getElementById('formSection').style.display = 'none';
+
+      api('checkUserStatus', { id: id }).then(function (res) {
+        document.getElementById('loading').style.display = 'none';
+        if (res && res.success) {
+          document.getElementById('userNameDisplay').innerText = res.name;
+          globalCourseDetails = res.courseDetails || [];
+          const box = document.getElementById('courseCheckboxContainer');
+          box.innerHTML = '';
+          if (globalCourseDetails.length === 0) {
+            box.innerHTML = "<span style='color:green;font-weight:bold;'>您目前沒有待繳費的課程！</span>";
+            document.getElementById('totalDisplay').innerText = '0';
+            document.getElementById('noticeTotal').innerText = '0';
+            document.getElementById('resultSection').style.display = 'block';
+            return;
+          }
+          globalCourseDetails.forEach(function (c, index) {
+            const amt = (c.deposit || 0) + (c.material || 0);
+            const label = document.createElement('label');
+            label.className = 'course-checkbox-label';
+            label.innerHTML = '<input type="checkbox" class="filled-in course-choice" data-index="' + index +
+              '" data-amount="' + amt + '" checked onchange="calculateDynamicTotal()" />' +
+              '<span style="color:#333;">' + c.name + ' (NT$ ' + amt.toLocaleString() + ')</span>';
+            box.appendChild(label);
+          });
+          calculateDynamicTotal();
+          document.getElementById('resultSection').style.display = 'block';
+          document.getElementById('formSection').style.display = 'block';
+        } else {
+          alert('找不到錄取資料，請確認輸入是否正確。');
+        }
+      }).catch(function (err) {
+        document.getElementById('loading').style.display = 'none';
+        alert('查詢失敗：' + err.message);
+      });
+    }
+
+    function calculateDynamicTotal() {
+      const checkboxes = document.querySelectorAll('.course-choice');
+      let total = 0, selected = [];
+      checkboxes.forEach(function (cb) {
+        if (cb.checked) {
+          total += parseInt(cb.getAttribute('data-amount'), 10);
+          selected.push(globalCourseDetails[parseInt(cb.getAttribute('data-index'), 10)].name);
+        }
+      });
+      document.getElementById('totalDisplay').innerText = total.toLocaleString();
+      document.getElementById('noticeTotal').innerText = total.toLocaleString();
+      window._selectedCourses = selected;
+
+      const submitBtn = document.querySelector('#reportForm button[type="submit"]');
+      if (selected.length === 0) { submitBtn.disabled = true; submitBtn.innerText = '請勾選至少一門課程'; }
+      else { submitBtn.disabled = false; submitBtn.innerText = '確認送出回報'; }
+    }
+
+    function renderFields(fields) {
+      const container = document.getElementById('dynamicFields');
+      container.innerHTML = '';
+      fields.forEach(function (f) {
+        const div = document.createElement('div');
+        div.className = 'input-field';
+        div.innerHTML = '<input type="text" name="' + f.id + '" id="' + f.id + '" ' + (f.required ? 'required' : '') + '>' +
+          '<label for="' + f.id + '">' + f.label + '</label>';
+        container.appendChild(div);
+      });
+      M.updateTextFields();
+    }
+
+    document.getElementById('reportForm').onsubmit = function (e) {
+      e.preventDefault();
+      const btn = e.target.querySelector('button');
+      btn.disabled = true; btn.innerText = '提交中...';
+
+      const formData = {
+        master_name: document.getElementById('userNameDisplay').innerText,
+        master_id: document.getElementById('userId').value.trim(),
+        master_courses: (window._selectedCourses || []).join(', ')
+      };
+      formFields.forEach(function (f) {
+        const el = document.getElementById(f.id);
+        formData[f.id] = el ? el.value : '';
+      });
+
+      api('processForm', { formData: formData }).then(function () {
+        alert('回報成功！我們將盡快為您對帳。');
+        location.reload();
+      }).catch(function (err) {
+        btn.disabled = false; btn.innerText = '確認送出回報';
+        alert('送出失敗：' + err.message);
+      });
+    };
+  </script>
+</body>
+</html>
