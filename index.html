@@ -16,6 +16,9 @@
     .loading { display:none; text-align:center; margin:20px 0; }
     .course-checkbox-label { display:block; margin-bottom:10px; font-size:1.05rem; color:#333; }
     .notice { color:#d93025; font-weight:bold; font-size:.95rem; margin-top:12px; }
+    /* 欄位說明文字樣式（可自行調整顏色/大小） */
+    .input-field .helper-text { font-size:.82rem; color:#607d8b; line-height:1.4; margin-top:2px; }
+    .input-field .helper-text b { color:#d93025; }
   </style>
 </head>
 <body>
@@ -62,6 +65,18 @@
   <script>
     // ★ 你的「報名前台專案」網頁應用程式網址（已填入）
     const GAS_API = 'https://script.google.com/macros/s/AKfycbw8GXg-NW-m6bfrg3FW5NjJZZqIUe4d3NF1O7U_HRzye4pjHHhcRKUXKmw2EMNWMQ2JVA/exec';
+
+    // ★★★ 各欄位說明文字（要改字就改這裡；用關鍵字比對，改欄位標題也不會跑掉）★★★
+    //  想關掉某個說明：把它的文字改成空字串 '' 即可。可用 <b>…</b> 讓文字變紅色強調。
+    function fieldHint(f) {
+      const L = ((f.label || '') + ' ' + (f.id || '')).toLowerCase();
+      if (/電話|phone|tel/.test(L))        return '請填寫報名時的同學手機號碼。';
+      if (/email|信箱|郵/.test(L))         return '請填寫報名時的同學電子郵件。';
+      if (/line/.test(L))                  return '方便我們必要時聯繫您（沒有可留空）。';
+      if (/後五碼|五碼|末五/.test(L))      return '請填「<b>您轉出帳戶</b>」帳號的末五碼，我們用它來核對款項（<b>不是</b>收款帳號的末五碼）。';
+      if (/備註|note|remark/.test(L))      return '若您是無摺存款，請在此填寫匯款時間或其他備註，若您是台灣pay，請註記台灣pay的兩組後五碼，以利對帳';
+      return '';
+    }
 
     let globalCourseDetails = [];
     let formFields = [];
@@ -150,8 +165,10 @@
       fields.forEach(function (f) {
         const div = document.createElement('div');
         div.className = 'input-field';
+        const hint = fieldHint(f);
         div.innerHTML = '<input type="text" name="' + f.id + '" id="' + f.id + '" ' + (f.required ? 'required' : '') + '>' +
-          '<label for="' + f.id + '">' + f.label + '</label>';
+          '<label for="' + f.id + '">' + f.label + '</label>' +
+          (hint ? '<span class="helper-text">' + hint + '</span>' : '');
         container.appendChild(div);
       });
       M.updateTextFields();
